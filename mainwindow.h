@@ -22,6 +22,14 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void showEnemy();
+    void handleStart();
+    void handleGoButton();
+    void updateCD();
+    void displayBoard();
+    void initBoard();
+    void destory();
+    void openStartPage();
 
 private:
 };
