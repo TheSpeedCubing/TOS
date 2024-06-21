@@ -23,6 +23,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void showEnemy();
+    void loadEnemy();
     void handleStart();
     void handleGoButton();
     void updateCD();
@@ -30,6 +31,7 @@ protected:
     void initBoard();
     void destory();
     void openStartPage();
+    void updateHealLabel();
 
 private:
 };
