@@ -31,7 +31,9 @@ protected:
     void initBoard();
     void destory();
     void openStartPage();
-    void updateHealLabel();
+    bool updateHealLabel(int dmg);
+    void loadSpecialPerRound();
+    void callMouseRelease(QMouseEvent *event);
 
 private:
 };

@@ -5,6 +5,7 @@
 #include <mainwindow.h>
 #include <iostream>
 #include <sstream>
+#include <QElapsedTimer>
 #include <QApplication>
 #include <QDebug>
 #include <QHBoxLayout>
@@ -21,7 +22,6 @@
 #include <iostream>
 #include <thread>
 #include "mainwindow.h"
-#include <filesystem>
 #include <iostream>
 #include <QTime>
 #include <queue>
@@ -36,7 +36,7 @@ void getCombos();
 
 void handleBallRemoval();
 //CONFIG
-int dmgMultiplier = 100;
+int dmgMultiplier = 50;
 
 //STATIC
 const int teamSize = 6;
@@ -115,15 +115,18 @@ QPixmap* enemyPic[7];
 // Initializatios
 QLineEdit* selectCharacter[teamSize];
 QLineEdit* selectMission;
+QPushButton* buttonGoBackToMenu = NULL;
 QPushButton* buttonConfirm;
 QPushButton* buttonSettings;
 QPushButton* buttonGoBack = NULL;
 QPushButton* buttonSurrender = NULL;
 
-
 //DFS
 int board[5][6];
 bool visited[5][6];
+bool boardWeather[5][6];
+bool boardFire[5][6];
+deque<pair<int,int>>* fireQueue = new deque<pair<int,int>>();
 
 //STATIC
 pair<int, int> boardCenter[5][6];
@@ -131,6 +134,8 @@ pair<int, int> boardCenter[5][6];
 QLabel* boardLabel[5][6];
 
 QPixmap* boardpic[stoneCount];
+QPixmap* boardpicWeather[stoneCount];
+QPixmap* boardpicFire[stoneCount];
 int characterType[6];
 QLabel* characterLabel[6];
 QPixmap* characterPic[characterCount];
@@ -148,12 +153,32 @@ int damageALL[6];
 int heal = 10000;
 int maxheal = heal;
 int level = 0;
-void MainWindow::updateHealLabel(){
+bool fireDamage = false;
+bool MainWindow::updateHealLabel(int dmg) {
+    heal-=dmg;
     HEALLABEL->setText(QString::fromStdString(toString(heal)+"/"+toString(maxheal)));
     HEALLABEL->show();
+    if(heal<=0){
+        int W = 150;
+        int H = 50;
+        buttonGoBackToMenu = new QPushButton(this);
+        buttonGoBackToMenu->setText("You have lost!\ngo-back-to-menu");
+        buttonGoBackToMenu->setGeometry((width2 - W) / 2, 200, W, H);
+        buttonGoBackToMenu->show();
+        QObject::connect(buttonGoBackToMenu, &QPushButton::clicked, [&]() {
+            openStartPage();
+        });
+        return true;
+    }
+    return false;
 }
 
 void startTurn() {
+        for(int i = 0;i<5;i++){
+            for(int j = 0;j<6;j++){
+                boardFire[i][j] = false;
+            }
+        }
     movableState = true;
     selectState = false;
     turnState = false;
@@ -238,7 +263,18 @@ int restraint(int a,int enemy){
 void MainWindow::displayBoard() {
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 6; j++) {
-            QPixmap* img = boardpic[board[i][j]];
+            int type = board[i][j];
+            if(type == -1) {
+                continue;
+            }
+
+            QPixmap* img = boardpic[type];
+            if(boardWeather[i][j]) {
+                img = boardpicWeather[type];
+            }
+            if(boardFire[i][j]) {
+                img = boardpicFire[type];
+            }
             boardLabel[i][j]->setPixmap(*img);
             ballHeight = img->height();
             ballWidth = img->width();
@@ -274,26 +310,31 @@ void MainWindow::destory(){
                 boardLabel[p.first][p.second]->hide();
                 damage[board[p.first][p.second]]++;
                 board[p.first][p.second] = -1;
+                boardWeather[p.first][p.second] = false;
             }
             sleep(300);
         }
-        for (int c = 0; c < 6; c++) {
-            int index = 0;
-            int newArr[5];
-            for (int r = 0; r < 5; r++) {
-                newArr[r] = -1;
-            }
-            for (int r = 4; r >= 0; r--) {
-                if (board[r][c] != -1) {
-                    newArr[index++] = board[r][c];
+
+        while(true) {
+            bool gen = false;
+            for (int c = 0; c < 6; c++) {
+                for (int r = 4; r > 0; r--) {
+                    if (board[r][c] == -1 && board[r-1][c] != -1) {
+                        swap(board[r][c],board[r-1][c]);
+                        swap(boardWeather[r][c],boardWeather[r-1][c]);
+                    }
+                }
+                if(board[0][c] == -1) {
+                    board[0][c] = rand() % 6;
+                    gen = true;
                 }
             }
-            for (int r = 4; r >= 0; r--) {
-                int idx = 4 - r;
-                board[r][c] = newArr[idx] == -1 ? rand() % 6 : newArr[idx];
+            displayBoard();
+            if(!gen) {
+                break;
             }
+            sleep(70);
         }
-        displayBoard();
         sleep(300);
     }
     for(int i = 0;i<6;i++) {
@@ -306,7 +347,7 @@ void MainWindow::destory(){
         if(heal > maxheal) {
             heal = maxheal;
         }
-        updateHealLabel();
+        updateHealLabel(0);
     }
     sleep(300);
 
@@ -314,9 +355,7 @@ void MainWindow::destory(){
     int size = enemies->size();
 
     //CALCULATE DAMAGE
-    int lastDMG = -1;
     for(int i = 0;i<6;i++) {
-        qDebug() << "char "<<i;
         string s = selectCharacter[i]->text().toStdString();
         if(s.length() == 0){
             continue;
@@ -380,7 +419,6 @@ void MainWindow::destory(){
         QLabel* enemyLB = enemyLabel[tg->id];
         int rX = rand() % 21 - 10;
         int rY = rand() % 21 - 10;
-        qDebug() << "resultEnemies->size()";
         damageInt->setGeometry(tg->x-enemyLB->width()/2+rX,tg->y-enemyLB->height()/2+rY,100,10);
         damageInt->show();
         QTimer::singleShot(500, damageInt, &QWidget::hide);
@@ -399,14 +437,30 @@ void MainWindow::destory(){
         next = next && tg->hp <= 0;
     }
     if(next) {
+        if(level == battle-1) {
+            int W = 150;
+            int H = 50;
+            buttonGoBackToMenu = new QPushButton(this);
+            buttonGoBackToMenu->setText("Victory!\ngo-back-to-menu");
+            buttonGoBackToMenu->setGeometry((width2 - W) / 2, 200, W, H);
+            buttonGoBackToMenu->show();
+            QObject::connect(buttonGoBackToMenu, &QPushButton::clicked, [&]() {
+                openStartPage();
+            });
+            return;
+        }
         level++;
+        loadSpecialPerRound();
+        displayBoard();
         showEnemy();
     }
     updateCD();
+    loadSpecialPerRound();
+    displayBoard();
     startTurn();
 }
 
-void MainWindow::mouseReleaseEvent(QMouseEvent* event) {
+void MainWindow::callMouseRelease(QMouseEvent* event){
     if(!movableState) {
         return;
     }
@@ -423,6 +477,10 @@ void MainWindow::mouseReleaseEvent(QMouseEvent* event) {
         topLabel->hide();
         destory();
     }
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent* event) {
+    callMouseRelease(event);
 }
 
 void MainWindow::mouseMoveEvent(QMouseEvent* event) {
@@ -457,14 +515,41 @@ void MainWindow::mouseMoveEvent(QMouseEvent* event) {
         return;
     }
     if (x2 != selectX || y2 != selectY) {
-        boardLabel[selectX][selectY]->setPixmap(*boardpic[board[x2][y2]]);
+        if(fireDamage) {
+            if(boardFire[x2][y2]) {
+                if(updateHealLabel(30))
+                    return;
+            }
+            boardFire[selectX][selectY] = true;
+            fireQueue->push_back({selectX,selectY});
+            if(fireQueue->size() == 6) {
+                bool c = false;
+                pair<int,int> toRemove = fireQueue->front();
+                fireQueue->pop_front();
+                for(int i = 0;i<fireQueue->size();i++){
+                    if(fireQueue->at(i).first == toRemove.first && fireQueue->at(i).second == toRemove.second){
+                        c = true;
+                        break;
+                    }
+                }
+                if(!c) {
+                    boardFire[toRemove.first][toRemove.second] = false;
+                }
+            }
+        }
         swap(board[selectX][selectY], board[x2][y2]);
-        boardLabel[selectX][selectY]->show();
+        displayBoard();
         selectX = x2;
         selectY = y2;
         lapx = x2;
         lapy = y2;
         boardLabel[x2][y2]->hide();
+        if(boardWeather[selectX][selectY]) {
+            if(updateHealLabel(100))
+                return;
+            boardWeather[selectX][selectY] = false;
+            callMouseRelease(event);
+        }
         turnState = true;
     }
 }
@@ -536,7 +621,7 @@ void MainWindow::updateCD(){
         enemy->cdLabel->setText(QString::fromStdString(toString(enemy->cd)));
         if(enemy->cd == 0) {
             heal-=enemy->atk;
-            updateHealLabel();
+            updateHealLabel(0);
             if(heal <= 0){
                 //die
             }
@@ -590,19 +675,62 @@ void MainWindow::showEnemy() {
         int side = (width2 - w * size) / (size + 1);
         int finalWidth = side * (i + 1) + w * i;
         enemyLabel[enemy->id]->setGeometry(finalWidth, 80-h/2, w,h);
-        enemy->x = finalWidth + w/2.0;
-        enemy->y = 80 + w/2.0;
+        enemy->x = finalWidth + w;
+        enemy->y = 80-h/2 + h;
         enemyLabel[enemy->id]->show();
         //cd
         enemy->cdLabel->setText(QString::fromStdString(toString(enemy->cd)));
         enemy->cdLabel->setGeometry(finalWidth-5, 80-h/2, 100,10);
         enemy->cdLabel->setStyleSheet("QLabel { color : red; }");
         enemy->cdLabel->show();
+
+        if(enemy->special){
+            if(enemy->special == 1) {
+                for(int i = 0;i<5;i++){
+                    for(int j = 0;j<6;j++){
+                        boardWeather[i][j] = false;
+                    }
+                }
+            }
+        }
+    }
+}
+void MainWindow::loadSpecialPerRound() {
+    fireDamage = false;
+    //SPECIAL
+    vector<ENEMY*>* enemies = battles->at(level)->enemies;
+    int size = enemies->size();
+    for(int i = 0;i<size;i++) {
+        ENEMY* enemy = enemies->at(i);
+        if(enemy->special == 1) {
+                vector<pair<int,int>*>* avaialble = new vector<pair<int,int>*>();
+                for(int r = 0;r<5;r++){
+                    for(int c = 0;c<6;c++) {
+                        if(!boardWeather[r][c]) {
+                            avaialble->push_back(new pair<int,int>(r,c));
+                        }
+                    }
+                }
+                int r = 2;
+                while(r--) {
+                    if(avaialble->size() == 0) {
+                        break;
+                    }
+                    int index = rand() % avaialble->size();
+                    pair<int,int>* i = avaialble->at(index);
+                    boardWeather[i->first][i->second] = true;
+                    avaialble->erase(avaialble->begin()+index);
+                }
+        }
+        if(enemy->special == 2) {
+            fireDamage = true;
+        }
     }
 }
 // Events
 void MainWindow::handleStart() {
     level = 0;
+
     for (int i = 0; i < 6; i++) {
         selectCharacter[i]->hide();
     }
@@ -639,10 +767,12 @@ void MainWindow::handleStart() {
             characterLabel[i]->show();
         }
     }
-    displayBoard();
-    updateHealLabel();
+    updateHealLabel(0);
     showEnemy();
+    loadSpecialPerRound();
+    displayBoard();
     startTurn();
+
 }
 
 void MainWindow::handleGoButton() {
@@ -656,6 +786,8 @@ void MainWindow::handleGoButton() {
 }
 
 void MainWindow::openStartPage(){
+    if(buttonGoBackToMenu != NULL)
+        buttonGoBackToMenu->hide();
     HEALLABEL->hide();
     if(buttonSurrender != NULL)
         buttonSurrender->hide();
@@ -776,9 +908,21 @@ MainWindow::MainWindow(QWidget *parent)
         }
     topLabel = new QLabel(this);
     for (int i = 0; i < stoneCount; i++) {
+        boardpicWeather[i] = new QPixmap((resPath+"runestone/weathered_"+stoneName[i]+".png").c_str());
+        *boardpicWeather[i] = boardpicWeather[i]->scaled(
+            boardpicWeather[i]->width() / 2, boardpicWeather[i]->height() / 2,
+            Qt::KeepAspectRatio,      // Keep aspect ratio
+            Qt::SmoothTransformation  // Smooth transformation for better quality
+            );
         boardpic[i] = new QPixmap((resPath+"runestone/" + stoneName[i] + ".png").c_str());
         *boardpic[i] = boardpic[i]->scaled(
             boardpic[i]->width() / 2, boardpic[i]->height() / 2,
+            Qt::KeepAspectRatio,      // Keep aspect ratio
+            Qt::SmoothTransformation  // Smooth transformation for better quality
+            );
+        boardpicFire[i] = new QPixmap((resPath+"runestone/burning_" + stoneName[i] + ".png").c_str());
+        *boardpicFire[i] = boardpicFire[i]->scaled(
+            boardpicFire[i]->width() / 2, boardpicFire[i]->height() / 2,
             Qt::KeepAspectRatio,      // Keep aspect ratio
             Qt::SmoothTransformation  // Smooth transformation for better quality
             );
