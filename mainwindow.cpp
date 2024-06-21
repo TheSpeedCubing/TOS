@@ -132,6 +132,7 @@ deque<pair<int,int>>* fireQueue = new deque<pair<int,int>>();
 pair<int, int> boardCenter[5][6];
 
 QLabel* boardLabel[5][6];
+QLabel* COMBO;
 
 QPixmap* boardpic[stoneCount];
 QPixmap* boardpicWeather[stoneCount];
@@ -290,21 +291,29 @@ void MainWindow::displayBoard() {
     }
 }
 
-void MainWindow::destory(){
+void MainWindow::destory() {
+    for(int i = 0;i<5;i++){
+        for(int j = 0;j<6;j++){
+            boardFire[i][j] = false;
+        }
+    }
+    displayBoard();
     for(int i = 0;i<6;i++) {
         damage[i] = 0;
         damageALL[i] = 0;
     }
     //DESTROY BLOCK
     int finalCombo = 0;
+    int r = 0;
     while(true) {
         getCombos();
         int combo = combos->size();
         if(combo == 0) {
             break;
         }
-        finalCombo+= combo;
+        finalCombo += combo;
         for (int i = 0; i < combo; i++) {
+            r++;
             vector<pair<int, int>>* v = combos->at(i);
             for (pair<int, int> p : *v) {
                 boardLabel[p.first][p.second]->hide();
@@ -312,6 +321,8 @@ void MainWindow::destory(){
                 board[p.first][p.second] = -1;
                 boardWeather[p.first][p.second] = false;
             }
+            COMBO->show();
+            COMBO->setText(QString::fromStdString(toString(r) +" Combo"));
             sleep(300);
         }
 
@@ -350,6 +361,7 @@ void MainWindow::destory(){
         updateHealLabel(0);
     }
     sleep(300);
+    COMBO->hide();
 
     vector<ENEMY*>* enemies = battles->at(level)->enemies;
     int size = enemies->size();
@@ -832,6 +844,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     srand(time(NULL));
     loadEnemy();
+
+    COMBO = new QLabel(this);
+    COMBO->setGeometry(220,130,100,10);
+    COMBO->hide();
 
     HEALLABEL = new QLabel(this);
     HEALLABEL->setGeometry(200,205,100,10);
